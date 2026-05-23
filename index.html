@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Paint Canvas</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #08080a; user-select: none; -webkit-user-select: none;
+    }
+
+    /* Fixed Viewport System */
+    .viewport {
+      position: relative; width: 100%; height: 100%; display: flex; flex-direction: column;
+    }
+
+    /* Fast Action Utilities Header */
+    .top-actions {
+      position: absolute; top: 12px; left: 12px; right: 12px;
+      display: flex; justify-content: space-between; z-index: 5; pointer-events: none;
+    }
+    .action-pill-box {
+      display: flex; gap: 8px; background: rgba(18, 18, 22, 0.85);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      padding: 6px; border-radius: 30px; border: 1px solid rgba(255, 255, 255, 0.08);
+      pointer-events: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .pill-btn {
+      background: transparent; border: none; color: white; width: 36px; height: 36px;
+      border-radius: 50%; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .pill-btn:disabled { opacity: 0.25; }
+    .pill-btn.danger { color: #f87171; }
+
+    /* Main Working Area */
+    .canvas-space {
+      position: relative; width: 100%; height: 100%; flex-grow: 1;
+      background-color: #111;
+      background-image: linear-gradient(45deg, #18181c 25%, transparent 25%), linear-gradient(-45deg, #18181c 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #18181c 75%), linear-gradient(-45deg, transparent 75%, #18181c 75%);
+      background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+    }
+    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
+
+    /* Premium Drag-Out / Slidable Control Drawer Container */
+    .drawer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(18, 18, 22, 0.94);
+      backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px 20px 0 0; z-index: 10;
+      transform: translateY(calc(100% - 40px)); /* Leaves only handle sticking out */
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+      padding: 0 16px 20px 16px;
+    }
+    .drawer.expanded { transform: translateY(0); }
+
+    /* Handle Zone */
+    .drawer-handle-zone {
+      width: 100%; height: 40px; display: flex; justify-content: center; align-items: center; cursor: pointer;
+    }
+    .drawer-notch {
+      width: 44px; height: 5px; background: rgba(255, 255, 255, 0.3); border-radius: 3px;
+    }
+
+    /* Tab Navigation Architecture */
+    .drawer-tabs {
+      display: flex; border-bottom: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 14px; gap: 4px;
+    }
+    .tab-trigger {
+      flex: 1; text-align: center; padding: 10px 0; color: #9ca3af; font-size: 12px;
+      font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;
+    }
+    .tab-trigger.active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 700; }
+
+    /* Content Views */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Flex grids for quick layout items selection */
+    .options-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .grid-card {
+      background: #1f1f25; border: 1px solid #2e2e38; border-radius: 8px; color: white;
+      padding: 10px 4px; font-size: 11px; text-align: center; cursor: pointer; display: flex;
+      flex-direction: column; align-items: center; gap: 6px; transition: background 0.15s;
+    }
+    .grid-card:active, .grid-card.active { background: #3b82f6; border-color: #60a5fa; }
+    .grid-card span { font-size: 16px; }
+
+    /* Interactive live tuning sub-sliders console interface */
+    .slider-console {
+      background: #16161c; border-radius: 10px; padding: 12px; margin-top: 12px;
+      display: none; border: 1px solid rgba(255,255,255,0.04);
+    }
+    .console-header { display: flex; justify-content: space-between; color: #9ca3af; font-size: 11px; margin-bottom: 6px; font-weight: 600;}
+    .slider-row { display: flex; align-items: center; gap: 12px; }
+    .slider-row input[type="range"] { flex-grow: 1; accent-color: #3b82f6; height: 6px; border-radius: 3px; }
+    .console-apply-btn {
+      background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px;
+      font-size: 11px; font-weight: 700; cursor: pointer;
+    }
+
+    /* Individual Custom Input Control Elements overrides */
+    .brush-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #16161c; padding: 10px; border-radius: 10px; margin-bottom: 10px; }
+    .brush-prop { display: flex; align-items: center; gap: 6px; color: #d1d5db; font-size: 11px; font-weight: 600; }
+    input[type="color"] {
+      -webkit-appearance: none; border: none; width: 28px; height: 28px; border-radius: 50%; overflow: hidden; cursor: pointer; background: transparent;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type="color"]::-webkit-color-swatch { border: 2px solid white; border-radius: 50%; }
+    .brush-size-slider { width: 70px; accent-color: #3b82f6; }
+
+    .export-layout { display: flex; flex-direction: column; gap: 10px; }
+    .export-row { display: flex; gap: 8px; }
+    select { flex: 1; background: #1f1f25; border: 1px solid #2e2e38; color: white; padding: 10px; border-radius: 8px; font-size: 12px; outline: none; }
+    .btn-commit-export { background: #2563eb; color: white; font-weight: 700; border: none; padding: 12px; border-radius: 8px; font-size: 13px; cursor: pointer; width: 100%; }
+  </style>
+</head>
+<body>
+
+  <div class="viewport">
+    <!-- Quick Utility Floating Core Header Trigger Nodes -->
+    <div class="top-actions">
+      <div class="action-pill-box">
+        <button id="undoBtn" class="pill-btn" title="Undo">↩️</button>
+        <button id="redoBtn" class="pill-btn" title="Redo">↪️</button>
+      </div>
+      <div class="action-pill-box">
+        <button id="clearBtn" class="pill-btn danger" title="Wipe Clear">🗑️</button>
+      </div>
+    </div>
+
+    <!-- Painting Board Sandbox -->
+    <div class="canvas-space">
+      <canvas id="studioBoard"></canvas>
+    </div>
+
+    <!-- Slidable Hiding Panel Frame -->
+    <div class="drawer" id="controlDrawer">
+      <div class="drawer-handle-zone" id="drawerHandle">
+        <div class="drawer-notch"></div>
+      </div>
+
+      <!-- Navigation System -->
+      <div class="drawer-tabs">
+        <div class="tab-trigger active" data-target="tab-brush">🎨 Brushes</div>
+        <div class="tab-trigger" data-target="tab-filters">🎛️ Filters</div>
+        <div class="tab-trigger" data-target="tab-effects">✨ Effects</div>
+        <div class="tab-trigger" data-target="tab-export">💾 Save</div>
+      </div>
+
+      <!-- TAB PANEL: BRUSH ENGINE -->
+      <div class="tab-content active" id="tab-brush">
+        <div class="brush-controls">
+          <div class="brush-prop">
+            <span>Color:</span>
+            <input type="color" id="brushColor" value="#3b82f6">
+          </div>
+          <div class="brush-prop">
+            <span>Size:</span>
+            <input type="range" id="brushSize" class="brush-size-slider" min="2" max="60" value="12">
+          </div>
+        </div>
+        <div class="options-grid">
+          <div class="grid-card active" data-brush="pencil"><span>✏️</span>Pencil</div>
+          <div class="grid-card" data-brush="crayon"><span>🖍️</span>Crayon</div>
+          <div class="grid-card" data-brush="oil"><span>🎨</span>Oil Paint</div>
+          <div class="grid-card" data-brush="eraser"><span>🧽</span>Eraser</div>
+        </div>
+      </div>
+
+      <!-- TAB PANEL: INDEPENDENT ADJUSTMENT FILTERS -->
+      <div class="tab-content" id="tab-filters">
+        <div class="options-grid">
+          <div class="grid-card" data-filter="sharpen"><span>🔪</span>Sharpen</div>
+          <div class="grid-card" data-filter="blur"><span>💧</span>Blur</div>
+          <div class="grid-card" data-filter="brightness"><span>☀️</span>Brightness</div>
+          <div class="grid-card" data-filter="contrast"><span>🌗</span>Contrast</div>
+          <div class="grid-card" data-filter="saturation"><span>🌈</span>Saturation</div>
+          <div class="grid-card" data-filter="hue"><span>🎡</span>Hue Rotate</div>
+          <div class="grid-card" data-filter="exposure"><span>📸</span>Exposure</div>
+          <div class="grid-card" data-filter="opacity"><span>👻</span>Opacity</div>
+        </div>
+        <!-- Adaptive Fine-Tuning Slider Module -->
+        <div class="slider-console" id="filterConsole">
+          <div class="console-header">
+            <span id="activeFilterLabel">Filter: None</span>
+            <button class="console-apply-btn" id="applyFilterBtn">Apply Filter</button>
+          </div>
+          <div class="slider-row">
+            <input type="range" id="filterSlider" min="0" max="100" value="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB PANEL: ARTISTIC STYLES & EFFECTS -->
+      <div class="tab-content" id="tab-effects">
+        <div class="options-grid">
+          <div class="grid-card" data-effect="noir"><span>🌑</span>Noir B&W</div>
+          <div class="grid-card" data-effect="sepia"><span>📜</span>Sepia</div>
+          <div class="grid-card" data-effect="comic"><span>💥</span>Comic Art</div>
+          <div class="grid-card" data-effect="glitch"><span>👾</span>Glitch</div>
+          <div class="grid-card" data-effect="invert"><span>🔄</span>Invert</div>
+          <div class="grid-card" data-effect="neon"><span>🔮</span>Neon Pop</div>
+          <div class="grid-card" data-effect="glaze"><span>🖌️</span>Oil Glaze</div>
+          <div class="grid-card" data-effect="wave"><span>🌊</span>Liquid Wave</div>
+        </div>
+        <!-- Simple Instant Effect Confirmation Controller Row -->
+        <div class="slider-console" id="effectConsole" style="padding: 10px;">
+          <div class="console-header" style="margin: 0; align-items: center;">
+            <span id="activeEffectLabel" style="color: #60a5fa;">Ready to transform canvas...</span>
+            <button class="console-apply-btn" id="applyEffectBtn" style="background: #2563eb;">Render Effect</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB PANEL: CUSTOM-RES EXPORT MATRIX -->
+      <div class="tab-content" id="tab-export">
+        <div class="export-layout">
+          <!-- Clean Flexible Dimension Inputs -->
+          <div class="export-row" style="align-items: center; justify-content: space-between; background: #16161c; padding: 10px; border-radius: 10px; margin-bottom: 4px;">
+            <div class="brush-prop">
+              <span>Width (px):</span>
+              <input type="number" id="exportWidth" style="width: 75px; background: #1f1f25; border: 1px solid #2e2e38; color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px;" value="1200">
+            </div>
+            <div class="brush-prop">
+              <span>Height (px):</span>
+              <input type="number" id="exportHeight" style="width: 75px; background: #1f1f25; border: 1px solid #2e2e38; color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px;" value="1200">
+            </div>
+            <button id="matchScreenBtn" style="background: #374151; border: none; color: white; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;">Screen Size</button>
+          </div>
+
+          <!-- Integrated Export Canvas Background Matrix -->
+          <div class="export-row" style="align-items: center; justify-content: space-between; background: #16161c; padding: 10px; border-radius: 10px; margin-bottom: 4px;">
+            <div class="brush-prop">
+              <span>Canvas Base:</span>
+              <select id="exportBgMode" style="padding: 4px 8px; background: #1f1f25; border: 1px solid #2e2e38; color: white; border-radius: 6px; font-size: 11px; max-width: 140px;">
+                <option value="transparent">Transparent (Clear)</option>
+                <option value="solid">Solid Background Color</option>
+              </select>
+            </div>
+            <div class="brush-prop" id="exportBgColorWrapper" style="display: none;">
+              <span>Color:</span>
+              <input type="color" id="exportBgColor" value="#ffffff" style="width: 24px; height: 24px;">
+            </div>
+          </div>
+          
+          <!-- Clean Format Selections -->
+          <div class="export-row">
+            <select id="exportFormat">
+              <option value="image/png">PNG</option>
+              <option value="image/jpeg">JPEG</option>
+              <option value="image/webp">WebP</option>
+              <option value="image/svg+xml">SVG (Vector)</option>
+            </select>
+          </div>
+          <button id="exportBtn" class="btn-commit-export">Export Asset File</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // System Setup
+    const canvas = document.getElementById('studioBoard');
+    const ctx = canvas.getContext('2d');
+    const drawer = document.getElementById('controlDrawer');
+    const drawerHandle = document.getElementById('drawerHandle');
+
+    let isDrawing = false, lastX = 0, lastY = 0;
+    let undoStack = [], redoStack = [], strokePathsLog = [], currentPathTrace = null;
+    const MAX_HISTORY = 20;
+
+    let selectedBrush = 'pencil';
+    let currentActiveFilter = null;
+    let currentActiveEffect = null;
+    let filterBackupSnapshot = null;
+
+    function initResolution() {
+      const backup = canvas.toDataURL();
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      
+      // Preserve dynamic alpha rendering transparently inside core pipeline
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      const img = new Image(); img.src = backup;
+      img.onload = () => ctx.drawImage(img, 0, 0);
+      saveState(true);
+    }
+    window.addEventListener('resize', initResolution);
+    window.addEventListener('DOMContentLoaded', initResolution);
+
+    // Dynamic Hiding Panel Toggle Logic
+    drawerHandle.addEventListener('click', () => {
+      drawer.classList.toggle('expanded');
+    });
+
+    // Revert utility to restore canvas cleanly if filter parameters change without committing
+    function revertToSnapshot() {
+      if (filterBackupSnapshot) {
+        const img = new Image();
+        img.src = filterBackupSnapshot;
+        img.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        };
+      }
+    }
+
+    // Elegant Floating Tabs Mapping Router Loops
+    document.querySelectorAll('.tab-trigger').forEach(trigger => {
+      trigger.addEventListener('click', (e) => {
+        // --- PREVENT STUCK STATES ON TAB CHANGE ---
+        if (currentActiveFilter && filterBackupSnapshot) {
+          revertToSnapshot();
+        }
+        // Hide fine-tuning console sub-interfaces
+        document.getElementById('filterConsole').style.display = 'none';
+        document.getElementById('effectConsole').style.display = 'none';
+        
+        // Reset state anchors cleanly
+        document.querySelectorAll('#tab-filters .grid-card').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('#tab-effects .grid-card').forEach(c => c.classList.remove('active'));
+        currentActiveFilter = null;
+        currentActiveEffect = null;
+        // ------------------------------------------
+
+        document.querySelectorAll('.tab-trigger').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        e.target.classList.add('active');
+        document.getElementById(e.target.getAttribute('data-target')).classList.add('active');
+      });
+    });
+
+    // Toggle Background Color Picker Visibility Contextually
+    document.getElementById('exportBgMode').addEventListener('change', (e) => {
+      document.getElementById('exportBgColorWrapper').style.display = e.target.value === 'solid' ? 'flex' : 'none';
+    });
+
+    // History Pipeline
+    function saveState(initial = false) {
+      if(!initial) {
+        redoStack = [];
+        if (undoStack.length >= MAX_HISTORY) undoStack.shift();
+        undoStack.push(canvas.toDataURL());
+      }
+      document.getElementById('undoBtn').disabled = undoStack.length === 0;
+      document.getElementById('redoBtn').disabled = redoStack.length === 0;
+    }
+
+    document.getElementById('undoBtn').addEventListener('click', () => {
+      if (undoStack.length === 0) return;
+      redoStack.push(canvas.toDataURL());
+      undoStack.pop();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (undoStack.length > 0) {
+        const img = new Image(); img.src = undoStack[undoStack.length - 1];
+        img.onload = () => ctx.drawImage(img, 0, 0);
+      }
+      if (strokePathsLog.length > 0) strokePathsLog.pop();
+      saveState(true);
+    });
+
+    document.getElementById('redoBtn').addEventListener('click', () => {
+      if (redoStack.length === 0) return;
+      const state = redoStack.pop();
+      undoStack.push(state);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const img = new Image(); img.src = state;
+      img.onload = () => ctx.drawImage(img, 0, 0);
+      saveState(true);
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      if(confirm('Clear entire workspace?')) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        strokePathsLog = [];
+        saveState();
+      }
+    });
+
+    // Brush Selection Processing Grid
+    document.querySelectorAll('#tab-brush .grid-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        const target = e.currentTarget;
+        document.querySelectorAll('#tab-brush .grid-card').forEach(c => c.classList.remove('active'));
+        target.classList.add('active');
+        selectedBrush = target.getAttribute('data-brush');
+      });
+    });
+
+    // Core Modular Dynamic Engine Stroke Pipelines
+    function getBrushConfig() {
+      const color = document.getElementById('brushColor').value;
+      const baseSize = parseInt(document.getElementById('brushSize').value, 10);
+      
+      let cfg = { op: 'source-over', stroke: color, fill: color, width: baseSize, alpha: 1.0 };
+      if (selectedBrush === 'eraser') {
+        cfg.op = 'destination-out'; cfg.width = baseSize * 2.0;
+      } else if (selectedBrush === 'pencil') {
+        cfg.width = Math.max(1.5, baseSize * 0.3); cfg.alpha = 0.9;
+      } else if (selectedBrush === 'crayon') {
+        cfg.alpha = 0.25;
+      } else if (selectedBrush === 'oil') {
+        cfg.width = baseSize * 1.5; cfg.alpha = 0.6;
+      }
+      return cfg;
+    }
+
+    function renderSegment(x1, y1, x2, y2) {
+      const c = getBrushConfig();
+      ctx.save();
+      ctx.globalCompositeOperation = c.op; ctx.strokeStyle = c.stroke;
+      ctx.fillStyle = c.fill; ctx.lineWidth = c.width; ctx.globalAlpha = c.alpha;
+
+      if (selectedBrush === 'pencil' || selectedBrush === 'eraser') {
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      } else if (selectedBrush === 'crayon') {
+        const d = Math.hypot(x2 - x1, y2 - y1); const steps = Math.max(1, d / 2);
+        for (let i = 0; i < steps; i++) {
+          const t = i / steps;
+          const rx = x1 + (x2 - x1) * t + (Math.random() - 0.5) * (c.width * 0.4);
+          const ry = y1 + (y2 - y1) * t + (Math.random() - 0.5) * (c.width * 0.4);
+          ctx.beginPath(); ctx.arc(rx, ry, c.width * 0.2, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (selectedBrush === 'oil') {
+        const d = Math.hypot(x2 - x1, y2 - y1); const steps = Math.max(1, d / 0.8);
+        for (let i = 0; i < steps; i++) {
+          const t = i / steps;
+          const ox = x1 + (x2 - x1) * t, oy = y1 + (y2 - y1) * t;
+          ctx.beginPath(); ctx.arc(ox, oy, c.width * 0.5, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
+    // Capture Vector Touch Traces safely
+    canvas.addEventListener('pointerdown', (e) => {
+      isDrawing = true;
+      const b = canvas.getBoundingClientRect();
+      lastX = e.clientX - b.left; lastY = e.clientY - b.top;
+      
+      currentPathTrace = {
+        brush: selectedBrush, color: document.getElementById('brushColor').value,
+        size: parseInt(document.getElementById('brushSize').value, 10),
+        points: [{x: lastX, y: lastY}]
+      };
+      renderSegment(lastX, lastY, lastX, lastY);
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!isDrawing) return;
+      const b = canvas.getBoundingClientRect();
+      const cx = e.clientX - b.left, cy = e.clientY - b.top;
+      renderSegment(lastX, lastY, cx, cy);
+      currentPathTrace.points.push({x: cx, y: cy});
+      lastX = cx; lastY = cy;
+    });
+
+    const haltDrawing = () => {
+      if (isDrawing) {
+        isDrawing = false;
+        if(currentPathTrace) strokePathsLog.push(currentPathTrace);
+        saveState();
+      }
+    };
+    window.addEventListener('pointerup', haltDrawing);
+    window.addEventListener('pointercancel', haltDrawing);
+
+    // ==========================================
+    // SEPARATED MODULE: 8 FINE-TUNING FILTERS
+    // ==========================================
+    const filterConsole = document.getElementById('filterConsole');
+    const filterSlider = document.getElementById('filterSlider');
+    const activeFilterLabel = document.getElementById('activeFilterLabel');
+
+    document.querySelectorAll('#tab-filters .grid-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        // Revert previous unapplied filter adjustments before opening a new one
+        if (currentActiveFilter && filterBackupSnapshot) {
+          revertToSnapshot();
+        }
+
+        document.querySelectorAll('#tab-filters .grid-card').forEach(c => c.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        
+        currentActiveFilter = e.currentTarget.getAttribute('data-filter');
+        activeFilterLabel.innerText = `Adjusting: ${currentActiveFilter.toUpperCase()}`;
+        
+        if(currentActiveFilter === 'blur') { filterSlider.min = 0; filterSlider.max = 20; filterSlider.value = 0; }
+        else if(currentActiveFilter === 'sharpen') { filterSlider.min = 0; filterSlider.max = 10; filterSlider.value = 0; }
+        else if(currentActiveFilter === 'brightness' || currentActiveFilter === 'contrast') { filterSlider.min = 50; filterSlider.max = 200; filterSlider.value = 100; }
+        else if(currentActiveFilter === 'saturation') { filterSlider.min = 0; filterSlider.max = 300; filterSlider.value = 100; }
+        else if(currentActiveFilter === 'hue') { filterSlider.min = 0; filterSlider.max = 360; filterSlider.value = 0; }
+        else if(currentActiveFilter === 'exposure') { filterSlider.min = 50; filterSlider.max = 250; filterSlider.value = 100; }
+        else if(currentActiveFilter === 'opacity') { filterSlider.min = 0; filterSlider.max = 100; filterSlider.value = 100; }
+
+        filterBackupSnapshot = canvas.toDataURL();
+        filterConsole.style.display = 'block';
+      });
+    });
+
+    filterSlider.addEventListener('input', () => {
+      if (!filterBackupSnapshot || !currentActiveFilter) return;
+      const val = filterSlider.value;
+      const img = new Image(); img.src = filterBackupSnapshot;
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        
+        if(currentActiveFilter === 'blur') ctx.filter = `blur(${val}px)`;
+        else if(currentActiveFilter === 'brightness') ctx.filter = `brightness(${val}%)`;
+        else if(currentActiveFilter === 'contrast') ctx.filter = `contrast(${val}%)`;
+        else if(currentActiveFilter === 'saturation') ctx.filter = `saturate(${val}%)`;
+        else if(currentActiveFilter === 'hue') ctx.filter = `hue-rotate(${val}deg)`;
+        else if(currentActiveFilter === 'opacity') ctx.filter = `opacity(${val}%)`;
+        else if(currentActiveFilter === 'exposure') ctx.filter = `brightness(${val}%) contrast(${100 + (val-100)*0.3}%)`;
+        else if(currentActiveFilter === 'sharpen') {
+          ctx.filter = `contrast(${100 + val * 10}%) saturate(${100 + val * 2}%)`;
+        }
+
+        ctx.drawImage(img, 0, 0);
+        ctx.restore();
+      };
+    });
+
+    document.getElementById('applyFilterBtn').addEventListener('click', () => {
+      saveState();
+      filterConsole.style.display = 'none';
+      document.querySelectorAll('#tab-filters .grid-card').forEach(c => c.classList.remove('active'));
+      currentActiveFilter = null; filterBackupSnapshot = null;
+    });
+
+    // ==========================================
+    // SEPARATED MODULE: 8 ARTISTIC EFFECTS
+    // ==========================================
+    const effectConsole = document.getElementById('effectConsole');
+    const activeEffectLabel = document.getElementById('activeEffectLabel');
+
+    document.querySelectorAll('#tab-effects .grid-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        // Cache current baseline state onto snapshot references before previewing logic shifts
+        filterBackupSnapshot = canvas.toDataURL();
+
+        document.querySelectorAll('#tab-effects .grid-card').forEach(c => c.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        
+        currentActiveEffect = e.currentTarget.getAttribute('data-effect');
+        activeEffectLabel.innerText = `Selected style: ${currentActiveEffect.toUpperCase()}`;
+        effectConsole.style.display = 'block';
+      });
+    });
+
+    document.getElementById('applyEffectBtn').addEventListener('click', () => {
+      if (!currentActiveEffect) return;
+      saveState();
+
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imgData.data;
+
+      if (currentActiveEffect === 'noir') {
+        for (let i = 0; i < data.length; i += 4) {
+          let gray = 0.2126 * data[i] + 0.7152 * data[i+1] + 0.0722 * data[i+2];
+          data[i] = data[i+1] = data[i+2] = gray > 128 ? gray * 1.2 : gray * 0.8;
+        }
+        ctx.putImageData(imgData, 0, 0);
+      } 
+      else if (currentActiveEffect === 'sepia') {
+        for (let i = 0; i < data.length; i += 4) {
+          let r = data[i], g = data[i+1], b = data[i+2];
+          data[i] = (r * 0.393) + (g * 0.769) + (b * 0.189);
+          data[i+1] = (r * 0.349) + (g * 0.686) + (b * 0.168);
+          data[i+2] = (r * 0.272) + (g * 0.534) + (b * 0.131);
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+      else if (currentActiveEffect === 'invert') {
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = 255 - data[i]; data[i+1] = 255 - data[i+1]; data[i+2] = 255 - data[i+2];
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+      else if (currentActiveEffect === 'comic') {
+        for (let i = 0; i < data.length; i += 4) {
+          let v = (data[i] + data[i+1] + data[i+2]) / 3;
+          let thresh = v > 110 ? 240 : 20;
+          data[i] = data[i] > 120 ? thresh : data[i]*0.5;
+          data[i+1] = data[i+1] > 120 ? thresh : data[i+1]*0.5;
+          data[i+2] = data[i+2] > 120 ? thresh : data[i+2]*0.5;
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+      else if (currentActiveEffect === 'neon') {
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = data[i] < 80 ? 255 - data[i] : data[i];
+          data[i+1] = data[i+1] < 50 ? 0 : data[i+1] * 1.5;
+          data[i+2] = data[i+2] > 150 ? 230 : data[i+2];
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+      else if (currentActiveEffect === 'glaze') {
+        for (let i = 0; i < data.length - 8; i += 4) {
+          data[i] = (data[i] + data[i+4]) / 2;
+          data[i+1] = (data[i+1] + data[i+5]) / 2;
+          data[i+2] = (data[i+2] + data[i+6]) / 2;
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+      else if (currentActiveEffect === 'glitch' || currentActiveEffect === 'wave') {
+        const src = new Uint32Array(data.buffer);
+        const outCanvas = ctx.createImageData(canvas.width, canvas.height);
+        const out = new Uint32Array(outCanvas.data.buffer);
+        out.set(src);
+
+        for (let y = 0; y < canvas.height; y++) {
+          let shift = 0;
+          if (currentActiveEffect === 'wave') shift = Math.round(Math.sin(y / 10) * 10);
+          else if (currentActiveEffect === 'glitch' && Math.random() < 0.12) shift = Math.round((Math.random() - 0.5) * 30);
+
+          if (shift !== 0) {
+            for (let x = 0; x < canvas.width; x++) {
+              let tx = (x + shift + canvas.width) % canvas.width;
+              out[y * canvas.width + x] = src[y * canvas.width + tx];
+            }
+          }
+        }
+        ctx.putImageData(outCanvas, 0, 0);
+      }
+
+      saveState();
+      effectConsole.style.display = 'none';
+      document.querySelectorAll('#tab-effects .grid-card').forEach(c => c.classList.remove('active'));
+      currentActiveEffect = null; filterBackupSnapshot = null;
+    });
+
+    // ==========================================
+    // FLEXIBLE HIGH-RESOLUTION EXPORT ENGINE
+    // ==========================================
+    document.getElementById('matchScreenBtn').addEventListener('click', () => {
+      document.getElementById('exportWidth').value = canvas.width;
+      document.getElementById('exportHeight').value = canvas.height;
+    });
+
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      const format = document.getElementById('exportFormat').value;
+      const targetWidth = parseInt(document.getElementById('exportWidth').value, 10) || 1200;
+      const targetHeight = parseInt(document.getElementById('exportHeight').value, 10) || 1200;
+      const bgMode = document.getElementById('exportBgMode').value;
+      const customBgColor = document.getElementById('exportBgColor').value;
+
+      // EXPORTER PATH A: Vector Line Tracking (SVG)
+      if (format === 'image/svg+xml') {
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${canvas.width} ${canvas.height}">`;
+        
+        // Render optional background color rect inside the vector model
+        if (bgMode === 'solid') {
+          svg += `<rect width="100%" height="100%" fill="${customBgColor}"/>`;
+        }
+        
+        strokePathsLog.forEach(p => {
+          if (p.points.length < 2 || p.brush === 'eraser') return;
+          let d = `M ${p.points[0].x} ${p.points[0].y} `;
+          for(let i=1; i<p.points.length; i++) d += `L ${p.points[i].x} ${p.points[i].y} `;
+          svg += `<path d="${d}" fill="none" stroke="${p.color}" stroke-width="${p.size}" stroke-linecap="round" stroke-linejoin="round"/>`;
+        });
+        svg += `</svg>`;
+        const dl = document.createElement('a');
+        dl.href = URL.createObjectURL(new Blob([svg], {type: 'image/svg+xml;charset=utf-8'}));
+        dl.download = `vector_master_${Date.now()}.svg`; dl.click();
+        return;
+      }
+
+      // EXPORTER PATH B: Flexible Pixel Rendering (PNG, JPEG, WebP)
+      const outC = document.createElement('canvas');
+      outC.width = targetWidth; 
+      outC.height = targetHeight;
+      const outCtx = outC.getContext('2d');
+      
+      // Background assignment rules engine
+      if (format === 'image/jpeg') { 
+        // JPEGs don't feature alpha channels; force fallback array properties cleanly
+        outCtx.fillStyle = (bgMode === 'solid') ? customBgColor : '#FFFFFF'; 
+        outCtx.fillRect(0, 0, targetWidth, targetHeight); 
+      } else if (bgMode === 'solid') {
+        // Apply chosen color layer if solid option is explicitly called
+        outCtx.fillStyle = customBgColor;
+        outCtx.fillRect(0, 0, targetWidth, targetHeight);
+      }
+      
+      // Paint your transparent canvas elements cleanly on top of chosen baseline matrix
+      outCtx.drawImage(canvas, 0, 0, targetWidth, targetHeight);
+
+      const a = document.createElement('a');
+      a.href = outC.toDataURL(format, 0.95);
+      
+      let fileExt = 'png';
+      if (format === 'image/jpeg') fileExt = 'jpg';
+      if (format === 'image/webp') fileExt = 'webp';
+      
+      a.download = `canvas_export_${Date.now()}.${fileExt}`;
+      a.click();
+    });
+  </script>
+</body>
+</html>
